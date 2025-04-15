@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 )
@@ -41,6 +42,30 @@ type ServerInitialization struct {
 }
 
 func handler() http.Handler {
+	weatherTool := Tool{
+		Name:        "get-forecast",
+		Description: "Get weather alerts for a state",
+		InputSchema: ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"state": map[string]interface{}{
+					"type":        "string",
+					"description": "The state to get weather alerts for",
+				},
+			},
+			Required: []string{"state"},
+		},
+		Handler: func(ctx context.Context, args ToolRunParams) (*ToolResult, error) {
+			state := args.Args["state"].(string)
+
+			return &ToolResult{
+				Content: []TextContent{
+					{Type: "text", Text: state},
+				},
+			}, nil
+		},
+	}
+
 	mux := http.NewServeMux()
 	initialize := ServerInitialization{
 		JSONRPC: "2.0",
@@ -54,6 +79,7 @@ func handler() http.Handler {
 			},
 		},
 	}
+
 	mux.HandleFunc("/initialize", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 		err := json.NewEncoder(w).Encode(initialize)
@@ -62,6 +88,48 @@ func handler() http.Handler {
 			return
 		}
 		return
+	})
+
+	mux.HandleFunc("/tools/call", func(w http.ResponseWriter, r *http.Request) {
+		// Parse the incoming JSON request
+		var toolRequest struct {
+			Name      string                 `json:"name"`
+			Arguments map[string]interface{} `json:"arguments"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&toolRequest); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request format"})
+			return
+		}
+
+		// Check if the requested tool is our weatherTool
+		if toolRequest.Name == weatherTool.Name {
+			// Create arguments structure
+			params := ToolRunParams{
+				Name: toolRequest.Name,
+				Args: toolRequest.Arguments,
+			}
+
+			// Call the tool handler
+			res, err := weatherTool.Run(r.Context(), params)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+
+			// Return a successful response
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status": "success",
+				"result": res.Content,
+			})
+		} else {
+			// Tool not found
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Tool not found: " + toolRequest.Name})
+		}
 	})
 
 	return mux
