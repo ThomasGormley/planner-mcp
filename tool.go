@@ -26,11 +26,15 @@ type ToolResult struct {
 	Content []TextContent `json:"content"`
 }
 
+type ToolListResult struct {
+	Tools []Tool `json:"tools"`
+}
+
 type Tool struct {
-	Name        string
-	Description string
-	InputSchema ToolInputSchema
-	Handler     ToolHandlerFunc
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	InputSchema ToolInputSchema `json:"inputSchema"`
+	Handler     ToolHandlerFunc `json:"-"`
 }
 
 type ToolHandlerFunc func(context.Context, ToolRunParams) (*ToolResult, error)
